@@ -76,3 +76,17 @@ def test_pesan_error_berisi_baris():
     script = parse_sql("SELECT id\nFROM\n;")
     assert len(script.errors) == 1
     assert script.errors[0].line == 3
+
+if __name__ == '__main__':
+    test_select_sederhana()
+    test_alias_dengan_dan_tanpa_as()
+    test_nama_tabel_berskema()
+    test_left_join()
+    test_where_and()
+    test_star_dan_perkalian()
+    test_insert_values()
+    test_insert_select()
+    test_update()
+    test_delete()
+    test_subquery_in()
+    test_pesan_error_berisi_baris()

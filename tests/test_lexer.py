@@ -56,5 +56,3 @@ def test_karakter_tidak_dikenal():
         tokenize("SELECT\n$")
     assert info.value.line == 2
 
-if __name__ == '__main__':
-    test_keyword_huruf_kecil()
