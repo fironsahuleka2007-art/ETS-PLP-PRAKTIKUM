@@ -9,8 +9,25 @@ Kategori:
 
 import pytest
 from crud import ast_nodes as ast
+from crud.analyzer import analyze_statement
 from crud.lexer import tokenize, LexError, TokenType as T
 from crud.parser import parse_sql, ParseError
+from crud.resolver import Resolver
+
+
+def _resolve(sql):
+    script = parse_sql(sql)
+    assert script.errors == [], script.errors
+    resolver = Resolver()
+    diagnostics = resolver.resolve_script(script)
+    return script, resolver, diagnostics
+
+
+def _cols(node, name):
+    return [
+        item for item in ast.iter_nodes(node)
+        if isinstance(item, ast.ColumnRef) and item.name == name
+    ]
 
 
 # ==============================================================================
@@ -86,9 +103,37 @@ def test_regresi_parser_error_statement_terakhir_tanpa_semicolon():
     assert len(script.errors) == 1
     assert script.errors[0].line == 1 or script.errors[0].line == 2
 
+#test tambahan untuk memastikan alias subquery menutupi alias luar (bug-1 yang diperbaiki di resolver)
+def test_alias_subquery_menutupi_alias_luar():
+    script, _, _ = _resolve(
+        "SELECT p.x FROM outer_t p WHERE EXISTS (SELECT 1 FROM inner_t p WHERE p.y = 1);")
+    assert _cols(script, "y")[0].resolved == "inner_t"
+    assert _cols(script, "x")[0].resolved == "outer_t"
 
+#test tambahan untuk memastikan scope tidak bocor setelah DELETE (bug-2 yang diperbaiki di resolver)
+def test_scope_tidak_bocor_setelah_delete():
+    script, r, diags = _resolve("DELETE FROM a p WHERE p.x = 1; SELECT p.x FROM b;")
+    assert r.scope is None
+    assert any(d.level == "error" and "'p'" in d.message for d in diags)
+    assert _cols(script.statements[1], "x")[0].resolved is None
+
+#test tambahan untuk memastikan subquery di UPDATE dianggap sebagai read (bug-3 yang diperbaiki di analyzer)
+def test_subquery_di_update_adalah_read():
+    script, _, _ = _resolve(
+        "UPDATE a SET x = (SELECT m FROM b) WHERE k IN (SELECT k FROM c);")
+    assert analyze_statement(script.statements[0]) == {"a": {"U"}, "b": {"R"}, "c": {"R"}}
+
+def test_update_membaca_tabelnya_sendiri_lewat_subquery():
+    script, _, _ = _resolve("UPDATE a SET x = (SELECT MAX(x) FROM a);")
+    assert analyze_statement(script.statements[0]) == {"a": {"U", "R"}}
+
+#test tambahan untuk memastikan INSERT ... SELECT dianggap sebagai create dan read (bug-4 yang diperbaiki di analyzer)
+def test_insert_select_tidak_crash_dan_crud_benar():
+    script, r, diags = _resolve("INSERT INTO arsip (id, total) SELECT id, total FROM pesanan WHERE total > 0;")
+    assert r.scope is None
+    assert analyze_statement(script.statements[0]) == {"arsip": {"C"}, "pesanan": {"R"}}
 # ==============================================================================
-# 2. IMPLEMENTASI FITUR SPESIFIKASI (TODO T1)
+# 2. IMPLEMENTASI FITUR SPESIFIKASI (TODO T1 dan T2)
 # ==============================================================================
 
 def test_fitur_insert_select_dukungan_spesifikasi():
@@ -101,6 +146,29 @@ def test_fitur_insert_select_dukungan_spesifikasi():
     assert isinstance(s, ast.Insert)
     assert s.columns == ["id"]
     assert isinstance(s.query, ast.Select)
+
+# ---- TODO(T2): kolom tanpa qualifier ----
+def test_kolom_polos_satu_tabel():
+    script, _, diags = _resolve("SELECT nama FROM crm.pelanggan;")
+    assert _cols(script, "nama")[0].resolved == "crm.pelanggan"
+    assert diags == []
+
+
+def test_kolom_polos_dua_tabel_ambigu():
+    script, _, diags = _resolve("SELECT nama FROM a, b;")
+    assert _cols(script, "nama")[0].resolved is None
+    assert any(d.level == "warning" and "ambigu" in d.message for d in diags)
+
+
+def test_kolom_polos_hanya_lihat_scope_terdalam():
+    script, _, _ = _resolve("SELECT 1 FROM a WHERE EXISTS (SELECT 1 FROM b WHERE z = 1);")
+    assert _cols(script, "z")[0].resolved == "b"
+
+
+def test_kolom_polos_di_insert_values_tidak_crash():
+    _, r, diags = _resolve("INSERT INTO t VALUES (x);")
+    assert r.scope is None
+    assert any(d.level == "warning" for d in diags)
 
 
 # ==============================================================================
@@ -136,6 +204,7 @@ def test_edge_case_pengurangan_beruntun():
     assert isinstance(expr.right, ast.UnaryOp) and expr.right.op == "-"
 
 
+
 # ==============================================================================
 # RUNNER SEMENTARA
 # ==============================================================================
@@ -153,6 +222,15 @@ if __name__ == '__main__':
         test_edge_case_semicolon_ganda,
         test_edge_case_komentar_line_tanpa_newline,
         test_edge_case_pengurangan_beruntun,
+        test_alias_subquery_menutupi_alias_luar,
+        test_scope_tidak_bocor_setelah_delete,
+        test_subquery_di_update_adalah_read,
+        test_update_membaca_tabelnya_sendiri_lewat_subquery,
+        test_insert_select_tidak_crash_dan_crud_benar,
+        test_kolom_polos_satu_tabel,
+        test_kolom_polos_dua_tabel_ambigu,
+        test_kolom_polos_hanya_lihat_scope_terdalam,
+        test_kolom_polos_di_insert_values_tidak_crash,
     ]
 
     print("=" * 65)
