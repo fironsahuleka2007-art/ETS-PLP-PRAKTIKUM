@@ -241,10 +241,77 @@ test_regresi_parser_left_outer_join ... PASSED
 **Peran AI.** AI membantu menunjuk bahwa `_join` tidak menangani `OUTER` opsional.
 Kami memverifikasi bahwa `LEFT OUTER JOIN` kini ter-parse sebagai `Join(kind='LEFT')`.
 
+## Bug 7 : _lookup mencari alias dari scope terluar
+**Ditemukan oleh:** Raza Mulki F· **Diperbaiki oleh:** Raza Mulki F.
+
+**Gejala.** 
+Alias yang sama dipakai di query luar dan di subquery. Output yang didapat: kolom p.y di dalam subquery resolve ke outer_t (tabel milik query luar). Output yang diharapkan menurut SPESIFIKASI bagian 4.3: qualifier dicari mulai dari scope terdalam ke luar, jadi alias di subquery menutupi alias luar (shadowing) dan p.y resolve ke inner_t.
+
+**Reproduksi minimal.** SQL terpendek yang memicu bug:
+
+```sql
+SELECT p.x FROM outer_t p
+WHERE EXISTS (SELECT 1 FROM inner_t p WHERE p.y = 1);
+```
+
+**Akar masalah.** 
+Scope di resolver adalah stack, tiap scope punya parent dan nama dicari dari scope paling dalam lalu naik ke parent sampai ketemu. Karena yang dicek pertama adalah yang paling dalam, nama di scope dalam otomatis menutupi nama yang sama di scope luar. Itu yang membuat shadowring dan correlated subquery bisa jalan bersamaan. Dikode lama, rantai scope dikumpulkan dari dalam ke luar ke sebuah list, lalu list itu dibalik dengan reversed(), sehingga yang terlebih dahulu malah scope terluar. Jadi konsep yang dilanggar adalah urutan pencarian pada rantai scope(scope dicari dari yang terdalam)
+
+**Perbaikan.** 
+Perbaikan. crud/resolver.py, fungsi _lookup: loop langsung dari self.scope ke parent sampai nama ketemu atau scope habis, tanpa membuat list dan tanpa reversed(). Alternatif yang dipertimbangkan: (a) tetap membuat list tapi menghapus reversed(). Hasilnya benar, tapi membuat list tiap pencarian itu boros dan tidak perlu, jadi tidak dipilih. (b) menyimpan semua alias di satu dict datar. Ditolak karena alias yang sama di scope berbeda saling menimpa, dan scope tidak bisa dibuang saat _pop().
+
+**Test regresi.** Nama test di `tests/test_tambahan.py` yang gagal sebelum perbaikan dan lulus
+sesudahnya.
+
+**Peran AI.** AI sangat membantu dalam menemukan bug ini, saya verifikasi dengan cara menjalankan dulu testnya dan terlihat memang apa yang salah disana, kemudian AI juga menyarankan perbaikan dengan mengubah alur dari _lookup, Sebelumnya rantai scope dibuat dulu lalu dibalik dengan reversed(). Sekarang pencarian langsung berjalan dari self.scope ke parent. Saya memverifikasinya dengan cara mencoba sendiri test nya sebelum dan sesudah diperbaiki.
+
+## Bug 8 : _delete tidak menutup scope
+**Ditemukan oleh:** Raza Mulki F· **Diperbaiki oleh:** Raza Mulki F.
+**Gejala.** 
+Setelah statement DELETE selesai di-resolve, scope-nya masih tertinggal. Output yang didapat: statement sesudahnya masih bisa melihat alias milik DELETE tadi, dan resolver.scope tidak None saat resolve_script selesai. Output yang diharapkan menurut SPESIFIKASI bagian 4.5: setiap statement berdiri sendiri, tidak ada scope tersisa, dan alias statement sebelumnya tidak terlihat oleh statement berikutnya.
+**Reproduksi minimal.** SQL terpendek yang memicu bug:
+```sql
+DELETE FROM a p WHERE p.x = 1;
+SELECT p.x FROM b;
+```
+**Akar masalah.** 
+Setiap kali resolver membuka scope dengan _push(), harus ada _pop() yang berpasangan saat scope itu selesai (pasangan beginScope dan endScope di CI bab 11). _update dan _select sudah berpasangan, tapi _delete lupa _pop(). Karena self.scope adalah state yang berubah-ubah, satu _pop() yang hilang tidak berhenti di statement itu, tapi terbawa ke semua statement setelahnya. Bug ini sempat tertutup oleh Bug 1: karena pencarian lama mulai dari scope terluar, scope DELETE yang bocor justru dicek paling dulu, jadi gejalanya terlihat seperti "alias ketemu", bukan "scope bocor". Dua bug ini baru kelihatan jelas setelah diuji terpisah.
+**Perbaikan**
+crud/resolver.py, fungsi _delete: tambah self._pop() di akhir fungsi.
+**Test regresi.** Nama test di `tests/test_tambahan.py` yang gagal sebelum perbaikan dan lulus
+sesudahnya.
+
+**Peran AI.** 
+AI menemukan baris _pop() yang hilang saat membaca _delete dan membandingkannya dengan _update, akhirnya saya tambahkan baris_pop() pada fungsi tersebut. Untuk verifikasinya saya coba dulu test kode lamanya dan memang berhasil setelah saya tambahkan _pop() pada fungsi _delete.
+
+## Bug 9 : subquery di UPDATE ditandai U, seharusnya R
+Tabel yang hanya dibaca lewat subquery di SET atau WHERE ikut dianggap diubah. Untuk query di bawah, output yang didapat {a: U, b: U, c: U}. Output yang diharapkan menurut SPESIFIKASI bagian 5 ("membaca tabel lewat subquery selalu R, apa pun jenis statement luarnya"): {a: U, b: R, c: R}.
+**Reproduksi minimal.** SQL terpendek yang memicu bug:
+```sql
+UPDATE a SET x = (SELECT m FROM b)
+WHERE k IN (SELECT k FROM c);
+```
+**Akar masalah.** 
+Analyzer menelusuri AST dan menandai tabel dengan sebuah operasi. Di cabang Update, operasi "U" ikut diteruskan ke penelusuran subquery di SET dan WHERE. Padahal peran sebuah tabel ditentukan oleh posisinya dalam grammar, bukan oleh jenis statement di luarnya: tabel target UPDATE memang U, tapi tabel di dalam subquery hanya sumber data, jadi R. Cabang Delete di file yang sama sudah benar memakai "R", jadi pola yang benar sebenarnya sudah ada. Akibat lain: UPDATE a SET x = (SELECT MAX(x) FROM a) seharusnya menghasilkan a: RU (target, dan juga dibaca). Dengan bug ini R tidak pernah muncul untuk a.
+**Perbaikan**
+crud/analyzer.py, fungsi analyze_statement, cabang Update: ganti "U" jadi "R" pada dua panggilan _collect (untuk assignment.value dan stmt.where). Catatan: setelah perbaikan, semua pemanggil _collect dan _collect_select memakai "R", jadi parameter op sebenarnya tidak berguna lagi. Alternatif: menghapus parameter itu dan menjadikannya aturan tetap (subquery selalu R). Secara desain itu lebih bagus, tapi diff-nya lebih besar dan menyentuh banyak fungsi, jadi kami memilih perbaikan dua baris saja.
+**Test regresi.** 
+test_subquery_di_update_adalah_read dan test_update_membaca_tabelnya_sendiri_lewat_subquery di tests/test_tambahan.py.
+
+**Peran AI.** 
+AI menemukan dua call "U" dengan membandingkan cabang Update dan Delete terhadap tabel aturan di spesifikasi bagian 5, lalu membuktikannya dengan AST. SAya mencocokkan juga hasil dengan label audit.sql baris 20 (pesanan U, pelanggan R)
+
+
 ## Fitur yang dilengkapi (bukan bug)
 
 - **T1: `INSERT ... SELECT` (parser).** [ISI singkat: apa yang diubah di `_insert`.]
   Test: `test_fitur_insert_select_dukungan_spesifikasi`.
+
+- **T2: 
+Cabang kolom tanpa qualifier di _column (resolver) masih pass. Sekarang diisi sesuai SPESIFIKASI 4.3: satu tabel di scope terdalam berarti resolve ke tabel itu, lebih dari satu tabel berarti warning ambigu tanpa skema dan resolved tetap None, tidak ada tabel berarti warning. Ada pengecekan self.scope karena INSERT ... VALUES tidak membuat scope.
+
+Diagnostik di audit.sql baris 18. SELECT s.id FROM pengguna u ... menghasilkan alias 's' tidak terdefinisi. Kami cek AST (--ast) dan teks SQL-nya: alias s memang tidak pernah dideklarasikan, jadi diagnostik itu benar menurut SPESIFIKASI 4.3. Statement ini tetap dihitung di matriks, karena error resolusi hanyalah diagnostik, bukan error sintaks.
+  Test : test_kolom_polos_satu_tabel, test_kolom_polos_dua_tabel_ambigu,test_kolom_polos_hanya_lihat_scope_terdalam, test_kolom_polos_di_insert_values_tidak_crash
 - **T3: komentar blok `/* ... */` (lexer).** Penutup dicari sebagai pasangan `*/`. Komentar
   yang tidak ditutup menjadi LexError, dan komentar boleh berisi `*`.
   Test: `test_regresi_lexer_komentar_blok_dengan_bintang_dan_tak_tertutup`.
