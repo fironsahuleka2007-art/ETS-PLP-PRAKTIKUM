@@ -25,5 +25,24 @@ Catat setiap penggunaan AI atau coding agent yang memengaruhi kode atau laporan.
 
 | 10 | Firon| Menganalisis error LexError: komentar blok belum didukung dari traceback | diterima | Perlu memahami cara membaca alur Traceback Python dari bawah ke atas. | Cara verifikasi | Membaca pesan error dan mencocokkannya dengan baris raise LexError pada crud/lexer.py |
 
+| 11 | Raza | Minta penjelasan deskripsi tugas ETS PLP dan rencana kerja untuk bagian saya (resolver, analyzer, data) | diterima | Saya masih bingung urutan mengerjakannya. AI memberi urutan kerja dan mengingatkan bahwa demo menguji tiap anggota terpisah, jadi walau modul dibagi kami tetap harus saling menjelaskan | Dicocokkan dengan deskripsi tugas dan SPESIFIKASI.md|
+
+| 12 | Raza | Minta SPESIFIKASI bagian 4 dan 5 diubah jadi daftar periksa aturan resolver dan analyzer | diterima | Aturan di spek jadi lebih mudah dicek satu per satu (alias, scope, subquery selalu R) | Tiap butir saya cocokkan dengan teks SPESIFIKASI bagian 4 dan 5 |
+
+| 13 | Raza | minta AI mencari bug dan menjelaskan kenapa hal tersebut merupakan bug | diterima | AI menemukan 3 bug dan 1 TODO: `_lookup` mencari dari scope terluar, `_delete` tidak ada `_pop()`, subquery di UPDATE ditandai U, dan TODO(T2) kolom tanpa qualifier. | Saya mem-verifikasinya dengan cara mencobakan sendiri code sebelum perbaikan dan setelah perbaikan |
+
+| 14 | Raza | Saya menemukan error saat mencoba menjalankan evaluate.py, lalu menempel traceback pytest `TypeError: 'NoneType' object is not iterable` pada test_matrix_laporan_penjualan dan bertanya kenapa bisa error | diterima | Penyebabnya Insert.values bernilai None untuk INSERT ... SELECT, dan baris yang sama ada di resolver dan analyzer. AI mengusulkan guard `or []` di keduanya. Kami pilih guard di konsumen karena aman untuk values None maupun [] | Setelah file diganti, pytest dijalankan ulang dan test itu lulus; evaluate.py bisa mengevaluasi laporan_penjualan.sql |
+
+| 15 | Raza | Tanya cara menemukan bug dan cara mengetes benar atau salahnya | diterima | Metodenya: ubah spek jadi aturan, buktikan dugaan dengan input terkecil, test harus gagal di kode lama dan lulus di kode baru | disini saya memverifikasinya denga cara mencoba-coba yang mana saja yang error lalu mencobakan tawaran perbaikan dari AI dan memahami setiap bugnya |
+
+| 16 | Raza | Error `OSError: Invalid argument 'data\sample\*.sql'` saat menjalankan CLI | diterima | cmd Windows tidak memperluas tanda `*`. AI menyarankan menyebut nama file satu per satu | CLI dijalankan ulang dengan nama file, tidak ada traceback |
+
+| 17 | Raza | Tanya kenapa muncul `alias 's' tidak terdefinisi` di audit.sql baris 18 | diterima | AI memberi tiga kemungkinan (parser, resolver, atau data uji). Setelah saya tempel AST dan SQL-nya, alias `s` memang tidak pernah dideklarasikan, jadi diagnostiknya benar dan bukan bug | Dicek lewat `--ast` dan teks SQL baris 18 |
+
+| 18 | Raza | Tanya cara melabeli ground_truth.csv, lalu minta koreksi label audit.sql dan pemeliharaan.sql | diubah | Label pertama saya masih satu tabel per statement, target dan sumber tertukar, dan skema hilang. AI menunjukkan pola kesalahannya lalu memberi versi benar beserta alasannya, dan saya memakai versi itu | Label pertama saya tulis sendiri (11 baris). Setelah diperbaiki jadi 17 baris, evaluate.py menunjukkan parser 1,00 untuk 27 triple |
+
+| 19 | Raza | Minta penjelasan hasil evaluate.py (FP dan FN regex), lalu tempel regex_extractor.py dan file SQL | diterima | AI menjelaskan 5 kelompok penyebab (DELETE FROM terhitung dua kali, FROM a, b hanya satu tabel, komentar tidak dibuang, isi string dibaca sebagai SQL, statement rusak tetap dihitung). Dugaan awal AI soal subquery dan JOIN ternyata keliru dan dikoreksi setelah kodenya dijalankan | AI menjalankan regex_extractor.py pada SQL kami, hasilnya sama dengan saat saya menjalankan evaluate.py (12 FP dan 5 FN) |
+
+
 **Refleksi (3-5 kalimat).** Di bagian mana AI paling membantu? Di mana AI keliru atau
 menyesatkan, dan bagaimana kalian mengetahuinya?
