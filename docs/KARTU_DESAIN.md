@@ -10,10 +10,6 @@ alternatif yang ditolak dan alasannya. Contoh topik (boleh memilih yang lain):
 - mengapa kolom tanpa qualifier hanya dilihat di scope terdalam, dan apa kelemahannya;
 - bagaimana implementasi `INSERT ... SELECT` atau komentar blok kalian.
 
-| No | Keputusan | Alternatif yang ditolak | Alasan |
-| --- | --- | --- | --- |
-
-Ini tabel keputusan desain yang sudah disederhanakan bahasanya agar terasa lebih alami, lugas, dan seperti hasil pemikiran sendiri tanpa kesan kaku atau terlalu "robotik":
 
 | No | Keputusan | Alternatif yang Ditolak | Alasan |
 | --- | --- | --- | --- |
