@@ -86,6 +86,15 @@ bug di lexer dan parser akan menurunkan kesalahan ke tahap berikutnya. Dengan be
 - Menulis test regresi dan kasus tepi untuk bagian tersebut.
 
 **Yang dikerjakan Raza Mulki F.**
+- Memperbaiki empat bug di resolver dan analyzer: `_lookup` mencari alias dari scope
+  terluar (bukan terdalam), `_delete` lupa menutup scope dengan `_pop()`, subquery di
+  `UPDATE` ditandai `U` (seharusnya `R`), dan `INSERT ... SELECT` membuat resolver dan
+  analyzer crash karena `Insert.values` bernilai `None`.
+- Menyelesaikan TODO T2 (resolusi kolom tanpa qualifier di resolver).
+- Melabeli `ground_truth.csv` untuk `audit.sql` dan `pemeliharaan.sql` (17 triple) dari
+  SPESIFIKASI bagian 5, lalu menjalankan `evaluate.py`.
+- Menulis test regresi dan kasus tepi untuk bagian resolver dan analyzer.
+- Menulis LAPORAN_BUG untuk bug di bagian tersebut.
 
 **Yang dikerjakan bersama.**
 - Membaca `SPESIFIKASI.md` dan menjalankan semua perintah awal (pytest, CLI, `--ast`).
