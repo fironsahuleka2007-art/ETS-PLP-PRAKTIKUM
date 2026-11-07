@@ -37,9 +37,32 @@ regex         0.65    0.81   0.72
 Untuk tiap kasus: SQL-nya, kesalahan regex, dan mengapa parser benar (kaitkan dengan konsep
 lexing, parsing, atau resolusi).
 
-1.
-2.
-3.
+1. **Komentar dan isi string dianggap perintah SQL**
+   - SQL:
+     ```sql
+     -- DELETE FROM pelanggan   (baris ini komentar, bukan perintah)
+     SELECT p.nama, SUM(o.total) AS omzet
+     FROM pelanggan p
+     JOIN pesanan o ON o.pelanggan_id = p.id
+     WHERE o.status = 'LUNAS' AND o.catatan <> 'FROM rahasia'
+     ```
+   - Regex: membaca teks apa adanya. Kata `DELETE` di komentar    dianggap perintah, jadi muncul `pelanggan D` yang sebenarnya tidak ada. Tulisan `FROM rahasia` di dalam string dianggap tabel, jadi muncul `rahasia R`. Nomor barisnya juga salah (baris 2, seharusnya baris 3). `pemeliharaan.sql` sama: `UPDATE pelanggan_lama` di komentar dianggap perintah `U`.
+   - Parser: komentar dibuang, dan isi string hanya dianggap satu teks biasa. Jadi tidak
+     ada `pelanggan D` dan tidak ada tabel `rahasia`.
+   - Kenapa beda: lexer (Bab 4) membuang komentar dan membungkus string jadi satu token, jadi isinya tidak pernah dibaca sebagai SQL. Regex tidak punya tahap ini.
+
+2. **`DELETE FROM` ikut dihitung sebagai baca**
+   - SQL: `DELETE FROM sesi s WHERE s.kedaluwarsa < :sekarang;`
+   - Regex: mengira semua kata `FROM` berarti baca. Jadi `DELETE FROM sesi` dicatat `sesi D` dan juga `sesi R`. Yang `R` salah.
+   - Parser: hanya `sesi D`.
+   - Kenapa beda: parser mengenali statement ini sebagai `DELETE` dari bentuk pohonnya (Bab 5), lalu memberi `D`. Regex hanya melihat kata `FROM`, tanpa tahu statement itu apa.
+
+3. **Statement yang salah tulis tetap dihitung**
+   (`campuran_error.sql` baris 4)
+   - SQL: `SELECT id nama, FROM pesanan;`
+   - Regex: tetap mencatat `pesanan R`, padahal statement ini salah (setelah koma harus ada nama kolom lagi).
+   - Parser: melaporkan satu error dan statement ini tidak dihitung. Statement sesudahnya tetap diproses.
+   - Kenapa beda: parser memeriksa aturan penulisan (grammar), sedangkan regex hanya mencari pola kata. Setelah error, parser membuang token sampai tanda `;` lalu lanjut (panic mode, Bab 6), jadi satu kesalahan tidak merusak statement lain.
 
 ## 3. Batas pendekatan kami
 
@@ -53,4 +76,25 @@ dan informasi apa yang dibutuhkan untuk mengatasinya.
 
 ## 4. Pembagian kerja
 
-Siapa mengerjakan apa, dan bagaimana kalian memastikan keduanya memahami seluruh kode.
+**Pembagian awal.** Kami membagi kerja berdasarkan urutan pipeline. Firon Fariz S mengerjakan bagian awal, yaitu lexer dan parser. Raza Mulki F mengerjakan bagian lanjutan, yaitu resolver, analyzer, dan pelabelan data. Kami memilih pembagian ini karena
+bug di lexer dan parser akan menurunkan kesalahan ke tahap berikutnya. Dengan begitu, lexer dan parser diperbaiki lebih dulu.
+
+**Yang dikerjakan Firon Fariz S.**
+- Memperbaiki enam bug di lexer dan parser (keyword huruf kecil, `''` di string, `<>`,
+  presedensi AND/OR, error recovery, dan `LEFT OUTER JOIN`).
+- Menyelesaikan TODO T1 (`INSERT ... SELECT`) dan T3 (komentar blok).
+- Menulis test regresi dan kasus tepi untuk bagian tersebut.
+
+**Yang dikerjakan Raza Mulki F.**
+
+**Yang dikerjakan bersama.**
+- Membaca `SPESIFIKASI.md` dan menjalankan semua perintah awal (pytest, CLI, `--ast`).
+- Menyusun dokumen: laporan bug, kartu desain, laporan akhir, dan log AI.
+- Latihan demo.
+
+**Cara kami memastikan keduanya paham seluruh kode.**
+- Setelah selesai satu bagian, kami saling menjelaskan hasilnya. 
+- Kami saling membaca kode sebelum commit. 
+- Kami bertukar peran untuk memeriksa ulang bagian satunya.
+- Saat latihan demo, kami saling bertanya seperti dosen: "kenapa test ini gagal di kode lama?" dan "apa yang dihasilkan lexer untuk input ini?".
+- Kedua anggota punya commit di riwayat Git.
