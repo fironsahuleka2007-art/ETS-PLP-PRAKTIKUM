@@ -70,9 +70,20 @@ Minimal tiga hal yang **tidak bisa** ditangani dengan benar oleh tool ini meskip
 sudah diperbaiki. Untuk tiap batas: contoh SQL atau situasinya, akibatnya pada CRUD matrix,
 dan informasi apa yang dibutuhkan untuk mengatasinya.
 
-1.
-2.
-3.
+1. **SQL Dinamis (Dynamic SQL / Query dari Variabel)**
+   - **Contoh SQL / Situasi:** Query yang dirangkai dari string/variabel, contohnya `EXEC('UPDATE ' + @nama_tabel + ' SET status = ''LUNAS''')`.
+   - **Akibat pada CRUD Matrix:** Karena tool kita bekerja secara *statis* (hanya membaca teks SQL sebelum dijalankan), nama tabel di dalam variabel `@nama_tabel` tidak bisa ditebak oleh parser. Akibatnya, perintah `UPDATE` ini **sama sekali tidak tercatat** di matriks CRUD.
+   - **Informasi yang Dibutuhkan:** Perlu log eksekusi query saat aplikasi berjalan (*runtime query log*) atau analisis pada kode program aplikasi tempat string SQL tersebut dirangkai.
+
+2. **Penggunaan Tanda Bintang (`SELECT *`) Tanpa Skema Database**
+   - **Contoh SQL / Situasi:** Query `SELECT * FROM pelanggan p JOIN pesanan o ON p.id = o.pelanggan_id`.
+   - **Akibat pada CRUD Matrix:** Tool kita hanya tahu kalau tabel `pelanggan` dan `pesanan` dibaca (**Read/R**), tapi **tidak tahu kolom apa saja** yang sebenarnya diambil. Kalau aplikasi butuh rincian akses sampai tingkat nama kolom (*column-level CRUD*), informasi ini bakal hilang.
+   - **Informasi yang Dibutuhkan:** Butuh skema struktur database (DDL / metadata tabel) untuk memecah tanda bintang `*` menjadi daftar nama kolom aslinya (`id`, `nama`, `tanggal`, dll).
+
+3. **Panggilan Stored Procedure atau Database View**
+   - **Contoh SQL / Situasi:** Perintah `CALL sp_proses_bayar()` atau `SELECT * FROM v_laporan_penjualan`.
+   - **Akibat pada CRUD Matrix:** Tool kita cuma bisa mencatat nama pemanggilan prosedur `sp_proses_bayar` atau view `v_laporan_penjualan`. Operasi ke tabel asli di dalam prosedur tersebut (misalnya di dalam `sp_proses_bayar` sebenarnya ada perintah `UPDATE pesanan` dan `INSERT pembayaran`) **tidak terdeteksi**.
+   - **Informasi yang Dibutuhkan:** Perlu berkas kode sumber (DDL) dari Stored Procedure atau View tersebut supaya parser bisa masuk dan membedah query yang ada di dalamnya secara rekursif.
 
 ## 4. Pembagian kerja
 
