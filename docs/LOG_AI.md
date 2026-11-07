@@ -46,3 +46,4 @@ Catat setiap penggunaan AI atau coding agent yang memengaruhi kode atau laporan.
 
 **Refleksi (3-5 kalimat).** Di bagian mana AI paling membantu? Di mana AI keliru atau
 menyesatkan, dan bagaimana kalian mengetahuinya?
+AI sangat membantu dalam menganalisis setiap bug yang ada, AI juga membantu mengoreksi hasil pekerjaan kami yang kurang teliti lalu membantu memperbaikinya, Namun AI juga masih bisa meleset, dimana beberapa saran dari AI masih menghasilkan error, dan kami terus crosscheck dan memastikan AI menjawab dengan benar.

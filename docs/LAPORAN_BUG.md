@@ -260,8 +260,10 @@ Scope di resolver adalah stack, tiap scope punya parent dan nama dicari dari sco
 **Perbaikan.** 
 Perbaikan. crud/resolver.py, fungsi _lookup: loop langsung dari self.scope ke parent sampai nama ketemu atau scope habis, tanpa membuat list dan tanpa reversed(). Alternatif yang dipertimbangkan: (a) tetap membuat list tapi menghapus reversed(). Hasilnya benar, tapi membuat list tiap pencarian itu boros dan tidak perlu, jadi tidak dipilih. (b) menyimpan semua alias di satu dict datar. Ditolak karena alias yang sama di scope berbeda saling menimpa, dan scope tidak bisa dibuang saat _pop().
 
-**Test regresi.** Nama test di `tests/test_tambahan.py` yang gagal sebelum perbaikan dan lulus
-sesudahnya.
+**Test regresi.**
+test : test_alias_subquery_menutupi_alias_luar
+sebelum : AssertionError: assert 'outer_t' == 'inner_t'
+sesudah : `test_alias_subquery_menutupi_alias_luar PASSED`
 
 **Peran AI.** AI sangat membantu dalam menemukan bug ini, saya verifikasi dengan cara menjalankan dulu testnya dan terlihat memang apa yang salah disana, kemudian AI juga menyarankan perbaikan dengan mengubah alur dari _lookup, Sebelumnya rantai scope dibuat dulu lalu dibalik dengan reversed(). Sekarang pencarian langsung berjalan dari self.scope ke parent. Saya memverifikasinya dengan cara mencoba sendiri test nya sebelum dan sesudah diperbaiki.
 
@@ -278,8 +280,10 @@ SELECT p.x FROM b;
 Setiap kali resolver membuka scope dengan _push(), harus ada _pop() yang berpasangan saat scope itu selesai (pasangan beginScope dan endScope di CI bab 11). _update dan _select sudah berpasangan, tapi _delete lupa _pop(). Karena self.scope adalah state yang berubah-ubah, satu _pop() yang hilang tidak berhenti di statement itu, tapi terbawa ke semua statement setelahnya. Bug ini sempat tertutup oleh Bug 1: karena pencarian lama mulai dari scope terluar, scope DELETE yang bocor justru dicek paling dulu, jadi gejalanya terlihat seperti "alias ketemu", bukan "scope bocor". Dua bug ini baru kelihatan jelas setelah diuji terpisah.
 **Perbaikan**
 crud/resolver.py, fungsi _delete: tambah self._pop() di akhir fungsi.
-**Test regresi.** Nama test di `tests/test_tambahan.py` yang gagal sebelum perbaikan dan lulus
-sesudahnya.
+**Test regresi.** 
+test : `test_scope_tidak_bocor_setelah_delete`
+Sebelum : assert <crud.resolver.Scope object at 0x0000026BF87ABB10> is None, test_scope_tidak_bocor_setelah_delete FAILED 
+Setelah : test_scope_tidak_bocor_setelah_delete PASSED
 
 **Peran AI.** 
 AI menemukan baris _pop() yang hilang saat membaca _delete dan membandingkannya dengan _update, akhirnya saya tambahkan baris_pop() pada fungsi tersebut. Untuk verifikasinya saya coba dulu test kode lamanya dan memang berhasil setelah saya tambahkan _pop() pada fungsi _delete.
@@ -297,7 +301,8 @@ Analyzer menelusuri AST dan menandai tabel dengan sebuah operasi. Di cabang Upda
 crud/analyzer.py, fungsi analyze_statement, cabang Update: ganti "U" jadi "R" pada dua panggilan _collect (untuk assignment.value dan stmt.where). Catatan: setelah perbaikan, semua pemanggil _collect dan _collect_select memakai "R", jadi parameter op sebenarnya tidak berguna lagi. Alternatif: menghapus parameter itu dan menjadikannya aturan tetap (subquery selalu R). Secara desain itu lebih bagus, tapi diff-nya lebih besar dan menyentuh banyak fungsi, jadi kami memilih perbaikan dua baris saja.
 **Test regresi.** 
 test_subquery_di_update_adalah_read dan test_update_membaca_tabelnya_sendiri_lewat_subquery di tests/test_tambahan.py.
-
+sebelum : AssertionError: assert {'a': {'U'}, ...}, 'c': {'U'}} == {'a': {'U'}, ...}, 'c': {'R'}} dan AssertionError: assert {'a': {'U'}} == {'a': {'R', 'U'}}
+sesudah : test_subquery_di_update_adalah_read PASSED dan test_update_membaca_tabelnya_sendiri_lewat_subquery PASSED 
 **Peran AI.** 
 AI menemukan dua call "U" dengan membandingkan cabang Update dan Delete terhadap tabel aturan di spesifikasi bagian 5, lalu membuktikannya dengan AST. SAya mencocokkan juga hasil dengan label audit.sql baris 20 (pesanan U, pelanggan R)
 
